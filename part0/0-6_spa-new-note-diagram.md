@@ -29,6 +29,6 @@
 
     browser ->> server: POST https://studies.cs.helsinki.fi/exampleapp/new_note_spa
     activate server
-    server ->> browser: the server-side representation of the newly created resource
+    server -->> browser: the server-side representation of the newly created resource
     deactivate server
 ```
