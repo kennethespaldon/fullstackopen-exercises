@@ -1,0 +1,15 @@
+.success,
+.fail {
+  border: 5px solid;
+  background: gainsboro;
+}
+
+.success {
+  border-color: green;
+  color: green;
+}
+
+.fail {
+  border-color: red;
+  color: red;
+}
