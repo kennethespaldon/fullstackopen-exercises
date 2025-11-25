@@ -1,6 +1,7 @@
 const express = require('express');
 const app = express();
 const morgan = require('morgan');
+const Contact = require('./models/contact');
 
 let phonebook = [
   { 
@@ -33,9 +34,9 @@ const requestLogger = (request, response, next) => {
   next();
 };
 
-app.use(express.json());
-// app.use(requestLogger);
 app.use(express.static('dist'));
+app.use(express.json());
+app.use(requestLogger);
 
 morgan.token('data', (req, res) => { 
   return JSON.stringify(req.body);
@@ -44,65 +45,76 @@ morgan.token('data', (req, res) => {
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms :data'));
 
 app.get('/api/persons', (req, res) => {
-  res.json(phonebook);
+  Contact.find({})
+    .then(contacts => {
+      res.json(contacts);
+    });
 });
 
 app.get('/info', (req, res) => {
-  const date = new Date().toString();
-  res.setHeader('Content-Type', 'text/html');
-  res.send(`
-    <p>Phonebook has info for ${phonebook.length} people</p>
-    <p>${date}</p>
-  `);
-});
-
-app.get('/api/persons/:id', (req, res) => {
-  const [ person ] = phonebook.filter(person => person.id === req.params.id);
-
-  if (!person) {
-    return res.status(404).send('Person not found');
-  }
-
-  res.json(person);
-});
-
-app.delete('/api/persons/:id', (req, res) => {
-  phonebook = phonebook.filter(person => person.id !== req.params.id);
-  res.status(204).end();
-});
-
-const generateId = () => {
-  return Math.floor(Math.random() * 10_000_000);
-};
-
-app.post('/api/persons', (req, res) => {
-  const { name, number } = req.body;
-
-  if (!(name && number)) {
-    return res.status(400).json({
-      error: 'content missing'
+  Contact.find({}).then(contacts => {
+    const date = new Date().toString();
+      res.setHeader('Content-Type', 'text/html');
+      res.send(`
+        <p>Phonebook has info for ${contacts.length} people</p>
+        <p>${date}</p>
+      `);
     });
-  }
+  });
+
+app.get('/api/persons/:id', (req, res, next) => {
+  Contact.findById(req.params.id)
+    .then(contact => {
+      if (!contact) {
+        return res.status(404).end();
+      }
+
+      res.json(contact);
+    })
+    .catch(error => next(error));
+});
+
+app.delete('/api/persons/:id', (req, res, next) => {
+  Contact.findByIdAndDelete(req.params.id)
+    .then(contact => {
+      res.status(204).end();
+    })
+    .catch(error => next(error));
+});
+
+app.post('/api/persons', (req, res, next) => {
+  const { name, number } = req.body;
 
   if (phonebook.some(person => person.name === name)) {
     return res.status(400).json({
       error: 'name must be unique'
     });
   }
-  
-  let id;
-  do {
-    id = generateId();
-  } while (phonebook.some(person => person.id === String(id)))
 
-  const addedContact = { 
-    id: String(id), 
+  const addedContact = new Contact({ 
     name, 
     number,
-  };
+  });
 
-  phonebook = phonebook.concat(addedContact);
-  res.json(addedContact);
+  addedContact.save()
+    .then(contact => {
+      res.json(contact);
+    })
+    .catch(error => next(error));
+});
+
+app.put('/api/persons/:id', (req, res, next) => {
+  const { number } = req.body;
+
+  Contact.findById(req.params.id)
+    .then(contact => {
+      contact.number = number;
+
+      return contact.save().then(updatedContact => {
+        res.json(updatedContact);
+      });
+    })
+    .catch(error => next(error));
 });
 
 const unknownEndpoint = (req, res) => {
@@ -111,5 +123,19 @@ const unknownEndpoint = (req, res) => {
 
 app.use(unknownEndpoint);
 
-const PORT = 3001;
+const errorHandler = (error, req, res, next) => {
+  console.error(error.message);
+
+  if (error.name === 'CastError') {
+    return res.status(400).send({ error: 'malformatted id' });
+  } else if (error.name === 'ValidationError') {
+    return res.status(400).json({ error: error.message });
+  }
+
+  next(error);
+};
+
+app.use(errorHandler);
+
+const PORT = process.env.PORT;
 app.listen(PORT);
